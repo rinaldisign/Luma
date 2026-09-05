@@ -127,6 +127,7 @@ export const views = [
     yawOffset: 0,
     pitchPoints: [
        { pitch: -6.75, yaw: 167.49, target: "view2" },
+        { type: "content", pitch: -25.54, yaw: -38.02, target: "content-peta" },
     ],
   },
   {
