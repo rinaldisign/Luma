@@ -116,14 +116,62 @@ let zoomLevel = 1;
 let panX = 0;
 let panY = 0;
 
+/*
+ * PENTING: kotak window (.floorplan-viewport) dan gambar JPG-nya belum tentu
+ * proporsi/rasio yang sama — apalagi sekarang windownya bisa di-resize bebas.
+ * .floorplan-canvas dulu asal inset:0 (ikut penuh kotak window), jadi titik
+ * hotspot yang dipatok pakai persen (%) ikut persen KOTAK, bukan persen GAMBAR
+ * — itu sebabnya melenceng saat window & gambar beda rasio.
+ *
+ * Perbaikannya: hitung sendiri area gambar yang benar-benar tampil (mengikuti
+ * rumus object-fit: contain) lalu paksa .floorplan-canvas persis di area itu
+ * (bukan penuh kotak window). Dengan begitu persen x/y titik selalu dihitung
+ * relatif ke GAMBAR asli, berapa pun ukuran windownya.
+ */
+let canvasBaseWidth = 0;
+let canvasBaseHeight = 0;
+
+function updateCanvasLayout() {
+  const containerWidth = floorplanViewport.clientWidth;
+  const containerHeight = floorplanViewport.clientHeight;
+  const naturalW = floorplanImg.naturalWidth;
+  const naturalH = floorplanImg.naturalHeight;
+  if (!containerWidth || !containerHeight || !naturalW || !naturalH) return;
+
+  const containerRatio = containerWidth / containerHeight;
+  const imgRatio = naturalW / naturalH;
+  let width, height;
+  if (imgRatio > containerRatio) {
+    width = containerWidth;
+    height = containerWidth / imgRatio;
+  } else {
+    height = containerHeight;
+    width = containerHeight * imgRatio;
+  }
+
+  canvasBaseWidth = width;
+  canvasBaseHeight = height;
+  floorplanCanvas.style.left = (containerWidth - width) / 2 + "px";
+  floorplanCanvas.style.top = (containerHeight - height) / 2 + "px";
+  floorplanCanvas.style.width = width + "px";
+  floorplanCanvas.style.height = height + "px";
+
+  clampPan();
+  applyTransform();
+}
+
 function applyTransform() {
   floorplanCanvas.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomLevel})`;
 }
 
 function clampPan() {
-  const rect = floorplanViewport.getBoundingClientRect();
-  const maxX = (rect.width * (zoomLevel - 1)) / 2;
-  const maxY = (rect.height * (zoomLevel - 1)) / 2;
+  // Dibatasi oleh ukuran GAMBAR yang sudah di-zoom (canvasBaseWidth/Height),
+  // bukan ukuran kotak window — supaya tidak bisa pan sampai muncul area
+  // kosong di luar gambar.
+  const viewportWidth = floorplanViewport.clientWidth;
+  const viewportHeight = floorplanViewport.clientHeight;
+  const maxX = Math.max(0, (canvasBaseWidth * zoomLevel - viewportWidth) / 2);
+  const maxY = Math.max(0, (canvasBaseHeight * zoomLevel - viewportHeight) / 2);
   panX = Math.min(maxX, Math.max(-maxX, panX));
   panY = Math.min(maxY, Math.max(-maxY, panY));
 }
@@ -221,8 +269,7 @@ function setPanelSize(width, height) {
   const h = Math.min(panelMaxHeight(), Math.max(PANEL_MIN_HEIGHT, height));
   floorplanPanel.style.width = w + "px";
   floorplanPanel.style.height = h + "px";
-  clampPan();
-  applyTransform();
+  updateCanvasLayout();
 }
 
 function savePanelSize() {
@@ -288,6 +335,21 @@ window.addEventListener("resize", () => {
 });
 
 /* ---------- Inisialisasi ---------- */
+
+// Setiap kali gambar denah selesai dimuat (ganti lantai, atau load pertama),
+// hitung ulang area gambar yang sebenarnya tampil supaya titik hotspot tetap presisi.
+floorplanImg.addEventListener("load", updateCanvasLayout);
+
+// Kalau elemen ukurannya berubah karena alasan lain (mis. breakpoint mobile
+// CSS, orientasi device berubah) — bukan cuma lewat handle resize kita — tetap ikut update.
+if (typeof ResizeObserver !== "undefined") {
+  new ResizeObserver(updateCanvasLayout).observe(floorplanViewport);
+}
+
 updateZoomUI();
 setActiveFloor(activeFloorId);
 restorePanelSize();
+// Fallback kalau gambar sudah ke-cache duluan (event "load" bisa saja sudah lewat).
+if (floorplanImg.complete && floorplanImg.naturalWidth) {
+  updateCanvasLayout();
+}
