@@ -136,7 +136,7 @@ export const views = [
     image: "assets/pano2.jpg",
     yawOffset: 0,
     pitchPoints: [
-         { pitch: -16.14, yaw: 122.33, target: "view1" },
+          { pitch: -16.89, yaw: -122.34, target: "view1" },
     ],
   },
 ];
