@@ -26,6 +26,7 @@ const floorplanViewport = document.getElementById("floorplan-viewport");
 const zoomInBtn = document.getElementById("zoom-in-btn");
 const zoomOutBtn = document.getElementById("zoom-out-btn");
 const zoomResetBtn = document.getElementById("zoom-reset-btn");
+const floorplanResizeHandle = document.getElementById("floorplan-resize-handle");
 
 /* ---------- Tab lantai ---------- */
 
@@ -195,6 +196,98 @@ floorplanViewport.addEventListener(
   { passive: false }
 );
 
+/* ---------- Resize window panel (bebas diperbesar/diperkecil) ---------- */
+/*
+ * Panel ini nge-anchor di kanan-bawah layar (lihat .nav-panel di CSS), jadi
+ * saat width/height bertambah, sisi kiri & atas yang bergerak menjauh dari
+ * sudut kanan-bawah. Makanya handle-nya diletakkan di pojok kiri-atas panel:
+ * drag menjauh (kiri-atas) = membesar, drag mendekat (kanan-bawah) = mengecil.
+ */
+const RESIZE_SIZE_KEY = "luma-floorplan-panel-size";
+const PANEL_MIN_WIDTH = 160;
+const PANEL_MIN_HEIGHT = 220;
+const DEFAULT_PANEL_WIDTH = 220;
+const DEFAULT_PANEL_HEIGHT = 320;
+
+function panelMaxWidth() {
+  return Math.min(window.innerWidth - 40, 560);
+}
+function panelMaxHeight() {
+  return Math.min(window.innerHeight - 40, 720);
+}
+
+function setPanelSize(width, height) {
+  const w = Math.min(panelMaxWidth(), Math.max(PANEL_MIN_WIDTH, width));
+  const h = Math.min(panelMaxHeight(), Math.max(PANEL_MIN_HEIGHT, height));
+  floorplanPanel.style.width = w + "px";
+  floorplanPanel.style.height = h + "px";
+  clampPan();
+  applyTransform();
+}
+
+function savePanelSize() {
+  try {
+    localStorage.setItem(
+      RESIZE_SIZE_KEY,
+      JSON.stringify({ w: floorplanPanel.offsetWidth, h: floorplanPanel.offsetHeight })
+    );
+  } catch (_) {
+    /* localStorage tidak tersedia — abaikan saja */
+  }
+}
+
+function restorePanelSize() {
+  try {
+    const raw = localStorage.getItem(RESIZE_SIZE_KEY);
+    if (!raw) return;
+    const { w, h } = JSON.parse(raw);
+    if (w && h) setPanelSize(w, h);
+  } catch (_) {
+    /* data korup / tidak tersedia — pakai ukuran default dari CSS */
+  }
+}
+
+let resizingPanel = false;
+let resizeStartX = 0;
+let resizeStartY = 0;
+let resizeStartWidth = 0;
+let resizeStartHeight = 0;
+
+floorplanResizeHandle.addEventListener("pointerdown", (e) => {
+  resizingPanel = true;
+  const rect = floorplanPanel.getBoundingClientRect();
+  resizeStartWidth = rect.width;
+  resizeStartHeight = rect.height;
+  resizeStartX = e.clientX;
+  resizeStartY = e.clientY;
+  floorplanPanel.classList.add("resizing");
+  floorplanResizeHandle.setPointerCapture(e.pointerId);
+  e.preventDefault();
+});
+floorplanResizeHandle.addEventListener("pointermove", (e) => {
+  if (!resizingPanel) return;
+  const dx = resizeStartX - e.clientX; // drag ke kiri -> lebar bertambah
+  const dy = resizeStartY - e.clientY; // drag ke atas -> tinggi bertambah
+  setPanelSize(resizeStartWidth + dx, resizeStartHeight + dy);
+});
+["pointerup", "pointercancel"].forEach((evt) => {
+  floorplanResizeHandle.addEventListener(evt, () => {
+    if (!resizingPanel) return;
+    resizingPanel = false;
+    floorplanPanel.classList.remove("resizing");
+    savePanelSize();
+  });
+});
+floorplanResizeHandle.addEventListener("dblclick", () => {
+  setPanelSize(DEFAULT_PANEL_WIDTH, DEFAULT_PANEL_HEIGHT);
+  savePanelSize();
+});
+window.addEventListener("resize", () => {
+  // Jaga panel tetap dalam batas layar kalau window browser di-resize
+  setPanelSize(floorplanPanel.offsetWidth, floorplanPanel.offsetHeight);
+});
+
 /* ---------- Inisialisasi ---------- */
 updateZoomUI();
 setActiveFloor(activeFloorId);
+restorePanelSize();
